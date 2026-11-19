@@ -31,7 +31,10 @@ const EXT_KIND = { fuel: 'fuel', spark: 'spark', idle: 'idle', io: 'io', nitrous
 // Known fields: [section, byte offset in section data, type, label, note]
 export const FIELDS = [
   { key: 'mapScale', section: 'sensor', off: 72, kind: 'f32x15', label: 'MAP sensor scale (kPa)', note: '105 kPa top = 1-bar sensor, 210 = 2-bar, 315 = 3-bar' },
-  { key: 'injectorId', section: 'system', off: 172, kind: 'u32', label: 'Injector selection', note: 'From the injector list in Holley EFI software' },
+  { key: 'injectorId', section: 'system', off: 172, kind: 'u32', label: 'Injector selection', note: 'Name from the injector list in Holley EFI software. The flow below is what the fuel math uses' },
+  { key: 'injectorFlow', section: 'system', off: 184, kind: 'f32', label: 'Injector flow (lb/hr)', note: 'Checked against Holley base tunes' },
+  { key: 'injectorPsi', section: 'system', off: 188, kind: 'f32', label: 'Injector rated pressure (psi)', note: '' },
+  { key: 'displacement', section: 'system', off: 8, kind: 'f32', label: 'Engine displacement (ci)', note: '' },
   { key: 'ignitionType', section: 'system', off: 2640, kind: 'u32', label: 'Ignition / crank trigger type', note: 'Matched against Holley base calibrations: LS 24X = 5, LS 58X = 4' },
   { key: 'sys2668', section: 'system', off: 2668, kind: 'u32', label: 'System setting at 2668', note: 'Meaning unknown' },
   { key: 'idleTarget', section: 'idle', off: 84, kind: 'f32x10', label: 'Idle target RPM (cold to warm)', note: '' },
@@ -123,9 +126,10 @@ export function parseTerx(input, fileName = '') {
     const s = byKind[f.section];
     if (!s) continue;
     const sv = new DataView(s.data.buffer, s.data.byteOffset, s.data.byteLength);
-    const count = f.kind === 'u32' ? 1 : Number(f.kind.replace('f32x', ''));
+    const count = f.kind === 'u32' || f.kind === 'f32' ? 1 : Number(f.kind.replace('f32x', ''));
     if (f.off + count * 4 > s.data.length) continue;
     if (f.kind === 'u32') fields[f.key] = sv.getUint32(f.off, true);
+    else if (f.kind === 'f32') fields[f.key] = Number(sv.getFloat32(f.off, true).toFixed(2));
     else fields[f.key] = Array.from({ length: count }, (_, i) => Number(sv.getFloat32(f.off + i * 4, true).toFixed(3)));
   }
 
@@ -336,9 +340,20 @@ export function compareTunes(good, check) {
     });
   }
 
-  if (good.fields.injectorId != null && check.fields.injectorId != null && good.fields.injectorId !== check.fields.injectorId) {
-    warnings.push({ level: 'bad', title: `Injector changed: ${injectorText(good.fields.injectorId, gi)} to ${injectorText(check.fields.injectorId, ci)}`, detail: 'The ECU sizes every injector pulse from this setting. If it does not match the injectors in the car, the engine runs far too rich or far too lean and may not start. Confirm which injectors are installed.' });
-  }  const kinds = [...new Set([...good.sections.map((s) => s.kind), ...check.sections.map((s) => s.kind)])];
+  const gf = good.fields.injectorFlow;
+  const cf = check.fields.injectorFlow;
+  if (gf > 0 && cf > 0 && Math.abs(cf / gf - 1) > 0.02) {
+    const pct = (gf / cf - 1) * 100;
+    warnings.push({
+      level: 'bad',
+      title: `Injector flow changed: ${gf} to ${cf} lb/hr`,
+      detail: `The ECU sizes every injector pulse from this number. With the same injectors in the car, this tune would deliver about ${Math.abs(pct).toFixed(0)}% ${pct < 0 ? 'less' : 'more'} fuel everywhere (${pct < 0 ? 'lean' : 'rich'}) until closed loop corrects what it can. Confirm which injectors are installed.`,
+    });
+  } else if (good.fields.injectorId != null && check.fields.injectorId != null && good.fields.injectorId !== check.fields.injectorId) {
+    warnings.push({ level: 'warn', title: `Injector selection changed: ${injectorText(good.fields.injectorId, gi)} to ${injectorText(check.fields.injectorId, ci)}`, detail: 'The flow rate is about the same, so fueling barely changes, but the injector dead times may differ. Confirm which injectors are installed.' });
+  }
+
+  const kinds = [...new Set([...good.sections.map((s) => s.kind), ...check.sections.map((s) => s.kind)])];
   const sections = kinds.map((k) => {
     const d = sectionDiff(good.byKind[k] && good.byKind[k].data, check.byKind[k] && check.byKind[k].data);
     return { kind: k, label: SECTION_LABELS[k] || k, inGood: !!good.byKind[k], inCheck: !!check.byKind[k], pct: d ? d.pct : null, diff: d ? d.diff : null, total: d ? d.total : null };

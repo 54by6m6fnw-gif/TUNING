@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { parseTerx, compareTunes, checkTune, crc32 } from '../js/terx.js';
 
 // Builds a small fake .terx file with the same layout as real ones.
-function makeTerx({ name = 'GOOD.terx', leftover = '', mapTop = 105, injector = 71, ignition = 5, fuelSeed = 1, withAdv = true, withIo = true, corrupt = false } = {}) {
+function makeTerx({ name = 'GOOD.terx', leftover = '', mapTop = 105, injector = 71, flow = 101.9, ignition = 5, fuelSeed = 1, withAdv = true, withIo = true, corrupt = false } = {}) {
   const H = 4464;
   const parts = [];
   const header = new Uint8Array(H);
@@ -31,7 +31,7 @@ function makeTerx({ name = 'GOOD.terx', leftover = '', mapTop = 105, injector = 
   section(0xa0, 400, (v) => { for (let i = 0; i < 100; i++) v.setFloat32(i * 4, 40 + ((i * fuelSeed) % 50), true); });
   section(0xa1, 200, (v) => { for (let i = 0; i < 50; i++) v.setFloat32(i * 4, 20 + ((i * fuelSeed) % 15), true); });
   section(0xa2, 160, (v) => { for (let i = 0; i < 10; i++) v.setFloat32(84 + i * 4, 1065 - i * 30, true); });
-  section(0xa7, 2800, (v) => { v.setUint32(172, injector, true); v.setUint32(2640, ignition, true); });
+  section(0xa7, 2800, (v) => { v.setFloat32(8, 366, true); v.setUint32(172, injector, true); v.setFloat32(184, flow, true); v.setFloat32(188, 43.5, true); v.setUint32(2640, ignition, true); });
   section(0xa9, 200, (v) => { for (let i = 0; i < 15; i++) v.setFloat32(72 + i * 4, ((i + 1) * mapTop) / 15, true); });
   if (withIo) section(0xa3, 100);
   section(0xaa, 80);
@@ -75,11 +75,12 @@ test('rejects files that are not tunes', () => {
 
 test('compare catches the no-start pattern from the wagon', () => {
   const good = parseTerx(makeTerx(), 'good.terx');
-  const bad = parseTerx(makeTerx({ name: 'WAGON.2.terx', leftover: '.25', mapTop: 210, injector: 255, ignition: 9, fuelSeed: 7, withIo: false }), 'bad.terx');
+  const bad = parseTerx(makeTerx({ name: 'WAGON.2.terx', leftover: '.25', mapTop: 210, injector: 255, flow: 68.8, ignition: 9, fuelSeed: 7, withIo: false }), 'bad.terx');
   const r = compareTunes(good, bad);
   const titles = r.warnings.map((w) => `${w.level}: ${w.title}`).join('\n');
   assert.match(titles, /bad: MAP sensor set to 2-bar, known good tune uses 1-bar/);
-  assert.match(titles, /bad: Injector changed: GM 12576341 \(stock LS3\/LS7\) \(71\) to Custom/);
+  assert.match(titles, /bad: Injector flow changed: 101.9 to 68.8 lb\/hr/);
+  assert.match(r.warnings.find((w) => /flow changed/.test(w.title)).detail, /48% more fuel/);
   assert.match(titles, /bad: Ignition type changed: LS 24X \(5\) to Unknown type \(9\)/);
   assert.match(titles, /info: Leftover text from an older file name/);
   assert.match(r.warnings.find((w) => /Mostly different/.test(w.title)).detail, /.25/);
