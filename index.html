@@ -1,0 +1,226 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>TUNING</title>
+  <meta name="description" content="Tuning assistant for Holley Terminator X on LS engines: VE correction from datalogs, base maps, knock review and a log viewer.">
+  <link rel="stylesheet" href="vendor/uPlot.min.css">
+  <link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand">
+      <span class="logo">TUNING</span>
+      <span class="sub">Holley Terminator X / LS</span>
+    </div>
+    <div class="top-actions">
+      <label class="field inline">
+        <span>Fuel</span>
+        <select id="fuel"></select>
+      </label>
+      <label class="btn primary file-btn">
+        Load datalog
+        <input type="file" id="logFile" accept=".csv,.txt,.tsv">
+      </label>
+      <button class="btn" id="sampleBtn" type="button">Try sample data</button>
+    </div>
+  </header>
+
+  <div id="logBar" class="logbar" hidden>
+    <div class="logbar-info"><strong id="logName"></strong> <span id="logStats" class="muted"></span></div>
+    <details id="channelsBox" class="channels">
+      <summary>Channels <span id="channelsSummary" class="muted"></span></summary>
+      <div id="channelGrid" class="channel-grid"></div>
+    </details>
+  </div>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="ve" aria-selected="true">VE correction</button>
+    <button role="tab" data-tab="base">Base map</button>
+    <button role="tab" data-tab="knock">Knock and timing</button>
+    <button role="tab" data-tab="viewer">Log viewer</button>
+    <button role="tab" data-tab="help">How to use</button>
+  </nav>
+
+  <main>
+    <!-- VE CORRECTION -->
+    <section id="tab-ve" class="tab" data-active>
+      <div class="cols">
+        <div class="panel inputs">
+          <h2>Current VE table</h2>
+          <p class="hint">In Holley EFI software, open the VE table, select every cell, copy, and paste here. Axes are optional.</p>
+          <textarea id="veText" rows="8" spellcheck="false" placeholder="Paste VE table here"></textarea>
+          <div class="axis-fields">
+            <label class="field"><span>RPM axis (in table order)</span><input id="veRpmAxis" type="text"></label>
+            <label class="field"><span>MAP axis, kPa (in table order)</span><input id="veMapAxis" type="text"></label>
+            <label class="field"><span>Rows are</span>
+              <select id="veRowsAre"><option value="map">MAP (RPM across the top)</option><option value="rpm">RPM (MAP across the top)</option></select>
+            </label>
+          </div>
+
+          <div id="targetBox" hidden>
+            <h3>Target AFR</h3>
+            <p class="hint">This log has no target AFR channel. Paste your target AFR table with the same axes, or leave blank to use a fixed target.</p>
+            <textarea id="targetText" rows="4" spellcheck="false" placeholder="Paste target AFR table (optional)"></textarea>
+            <label class="field"><span>Fixed target AFR</span><input id="fixedTarget" type="number" step="0.1" value="14.1"></label>
+          </div>
+
+          <details class="filters">
+            <summary>Filters and limits</summary>
+            <div class="filter-grid">
+              <label class="field"><span>Min coolant temp</span><input id="f_minCts" type="number"></label>
+              <label class="field"><span>Min RPM</span><input id="f_minRpm" type="number"></label>
+              <label class="field"><span>Max TPS change (%/s)</span><input id="f_maxTpsRate" type="number"></label>
+              <label class="field"><span>Max MAP change (kPa/s)</span><input id="f_maxMapRate" type="number"></label>
+              <label class="field"><span>Wideband delay (ms)</span><input id="f_delayMs" type="number" step="10"></label>
+              <label class="field"><span>Min samples per cell</span><input id="f_minWeight" type="number"></label>
+              <label class="field"><span>Max change per cell (%)</span><input id="f_maxChangePct" type="number"></label>
+              <label class="field"><span>Apply this much of the fix (%)</span><input id="f_strength" type="number" min="0" max="100"></label>
+              <label class="check"><input id="f_useCL" type="checkbox"> Include closed loop comp</label>
+              <label class="check"><input id="f_useLearn" type="checkbox"> Include learn</label>
+              <label class="check"><input id="f_skipDecel" type="checkbox"> Skip decel</label>
+            </div>
+          </details>
+
+          <button class="btn primary wide" id="veRun" type="button">Correct VE table</button>
+          <p id="veMsg" class="msg" role="status"></p>
+        </div>
+
+        <div class="panel results">
+          <div class="results-head">
+            <h2>Corrected VE</h2>
+            <div class="seg" id="veView">
+              <button data-view="new" aria-pressed="true">New VE</button>
+              <button data-view="change">Change %</button>
+              <button data-view="err">AFR error %</button>
+              <button data-view="hits">Samples</button>
+            </div>
+          </div>
+          <div id="veStats" class="stats"></div>
+          <div id="veGrid" class="grid-wrap empty">Load a datalog and paste your VE table, then press Correct VE table.</div>
+          <div class="legend" id="veLegend"></div>
+          <div class="actions" id="veActions" hidden>
+            <button class="btn primary" data-copy="ve-values" type="button">Copy table for Holley</button>
+            <button class="btn" data-copy="ve-axes" type="button">Copy with axes</button>
+            <button class="btn" id="veDownload" type="button">Download CSV</button>
+            <button class="btn" id="veUseNew" type="button">Use as current table</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- BASE MAP -->
+    <section id="tab-base" class="tab">
+      <div class="cols">
+        <div class="panel inputs">
+          <h2>Engine build</h2>
+          <p class="hint">Rough starting tables for a first start. Compare them to Holley's base map for your engine before using them.</p>
+          <div class="filter-grid">
+            <label class="field"><span>Displacement (L)</span><input id="b_displacement" type="number" step="0.1"></label>
+            <label class="field"><span>Cam intake duration at .050</span><input id="b_camDuration" type="number"></label>
+            <label class="field"><span>Lobe separation (LSA)</span><input id="b_lsa" type="number" step="0.5"></label>
+            <label class="field"><span>Heads</span>
+              <select id="b_heads"><option value="cathedral">Cathedral port</option><option value="rectangle">Rectangle port</option><option value="ported">Ported / aftermarket</option></select>
+            </label>
+            <label class="field"><span>Compression ratio</span><input id="b_compression" type="number" step="0.1"></label>
+            <label class="field"><span>Boost (psi, 0 for NA)</span><input id="b_boostPsi" type="number" step="1"></label>
+            <label class="field"><span>Idle RPM</span><input id="b_idleRpm" type="number" step="50"></label>
+            <label class="field"><span>Redline</span><input id="b_redline" type="number" step="100"></label>
+          </div>
+          <div class="axis-fields">
+            <label class="field"><span>RPM axis</span><input id="b_rpmAxis" type="text"></label>
+            <label class="field"><span>MAP axis, kPa</span><input id="b_mapAxis" type="text"></label>
+            <label class="field"><span>MAP rows go</span>
+              <select id="b_mapOrder"><option value="asc">Low kPa at top</option><option value="desc">High kPa at top</option></select>
+            </label>
+          </div>
+          <button class="btn primary wide" id="baseRun" type="button">Build base tables</button>
+          <p id="baseMsg" class="msg" role="status"></p>
+        </div>
+        <div class="panel results" id="baseResults">
+          <div class="grid-wrap empty">Fill in the build and press Build base tables.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- KNOCK -->
+    <section id="tab-knock" class="tab">
+      <div class="cols">
+        <div class="panel inputs">
+          <h2>Timing table (optional)</h2>
+          <p class="hint">Paste your spark table to get a version with timing pulled where knock showed up. Without it, knock is mapped on the VE table axes.</p>
+          <textarea id="timingText" rows="8" spellcheck="false" placeholder="Paste ignition timing table"></textarea>
+          <div class="axis-fields">
+            <label class="field"><span>RPM axis (in table order)</span><input id="tRpmAxis" type="text"></label>
+            <label class="field"><span>MAP axis, kPa (in table order)</span><input id="tMapAxis" type="text"></label>
+            <label class="field"><span>Rows are</span>
+              <select id="tRowsAre"><option value="map">MAP (RPM across the top)</option><option value="rpm">RPM (MAP across the top)</option></select>
+            </label>
+          </div>
+          <div class="filter-grid">
+            <label class="field"><span>Ignore retard below (deg)</span><input id="k_threshold" type="number" step="0.1" value="0.1"></label>
+            <label class="field"><span>Extra degrees to pull</span><input id="k_extra" type="number" step="0.5" value="1"></label>
+          </div>
+          <button class="btn primary wide" id="knockRun" type="button">Review knock</button>
+          <p id="knockMsg" class="msg" role="status"></p>
+        </div>
+        <div class="panel results">
+          <h2>Knock by cell</h2>
+          <div id="knockStats" class="stats"></div>
+          <div id="knockGrid" class="grid-wrap empty">Load a datalog with a knock retard channel, then press Review knock.</div>
+          <div id="timingOut"></div>
+          <h3>Knock events</h3>
+          <div id="knockEvents" class="events muted">None yet.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- VIEWER -->
+    <section id="tab-viewer" class="tab">
+      <div class="panel">
+        <div class="results-head">
+          <h2>Log viewer</h2>
+          <button class="btn" id="viewerReset" type="button">Show whole log</button>
+        </div>
+        <p class="hint">Pick channels to chart. Drag across a chart to zoom; all charts move together.</p>
+        <div id="channelPicks" class="picks muted">Load a datalog first.</div>
+        <div id="charts"></div>
+      </div>
+    </section>
+
+    <!-- HELP -->
+    <section id="tab-help" class="tab">
+      <div class="panel prose">
+        <h2>How to use this with the Terminator X</h2>
+        <p>This app never talks to the ECU. Holley EFI software stays in charge of reading and writing the tune. You move data in and out with CSV exports and copy and paste.</p>
+        <h3>1. Get a good datalog</h3>
+        <ul>
+          <li>Warm the engine fully. Cold data is filtered out by coolant temp.</li>
+          <li>Drive steady at as many RPM and load points as you can. Hold each for a few seconds.</li>
+          <li>Log measured AFR, target AFR, RPM, MAP, TPS, coolant temp, closed loop comp and learn.</li>
+          <li>In Holley EFI software, open the datalog and export it to CSV. Load that file here.</li>
+        </ul>
+        <h3>2. Correct the VE table</h3>
+        <ul>
+          <li>Copy your current VE table from Holley EFI software and paste it in the VE correction tab.</li>
+          <li>Check the RPM and MAP axes match your table.</li>
+          <li>Press Correct VE table. Cells with enough data change. Grey cells did not have enough data and keep their old value.</li>
+          <li>Press Copy table for Holley, select the whole VE table in Holley EFI software and paste.</li>
+          <li>Repeat: log again, correct again. Each pass gets closer. Use the "Apply this much of the fix" setting to take smaller steps.</li>
+          <li>If you correct with learn included, clear the learn table in Holley after you paste the new VE.</li>
+        </ul>
+        <h3>3. Knock</h3>
+        <p>Paste your timing table in Knock and timing. The app pulls the worst retard seen in each cell plus a margin. Always confirm real knock (not noise) before trusting it.</p>
+        <h3>Safety</h3>
+        <p>These are suggestions. Watch AFR and knock on every change, keep WOT pulls short until the tune is proven, and keep a saved copy of every tune you load.</p>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+  <script src="vendor/uPlot.iife.min.js"></script>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
