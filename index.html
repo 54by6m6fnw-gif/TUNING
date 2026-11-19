@@ -36,6 +36,7 @@
   </div>
 
   <nav class="tabs" role="tablist">
+    <button role="tab" data-tab="tune">Tune check</button>
     <button role="tab" data-tab="ve" aria-selected="true">VE correction</button>
     <button role="tab" data-tab="base">Base map</button>
     <button role="tab" data-tab="knock">Knock and timing</button>
@@ -44,6 +45,32 @@
   </nav>
 
   <main>
+    <!-- TUNE CHECK -->
+    <section id="tab-tune" class="tab">
+      <div class="cols">
+        <div class="panel inputs">
+          <h2>Tune files</h2>
+          <p class="hint">Check a Terminator X tune (.terx) before loading it into the car. Add a tune you know runs to compare against. Files stay on this computer.</p>
+          <div class="drop" id="dropGood">
+            <span class="drop-label">Known good tune</span>
+            <strong id="goodName" class="muted">None loaded</strong>
+            <label class="btn file-btn">Choose file<input type="file" id="goodFile" accept=".terx"></label>
+          </div>
+          <div class="drop" id="dropCheck">
+            <span class="drop-label">Tune to check</span>
+            <strong id="checkName" class="muted">None loaded</strong>
+            <label class="btn primary file-btn">Choose file<input type="file" id="checkFile" accept=".terx"></label>
+          </div>
+          <button class="btn wide" id="tuneSwap" type="button">Swap the two files</button>
+          <p class="hint" style="margin-top:14px">Holley does not publish the .terx format. The settings shown here were worked out by comparing tune files, so confirm anything flagged in Holley EFI software before you change it.</p>
+          <p id="tuneMsg" class="msg" role="status"></p>
+        </div>
+        <div class="panel results" id="tuneResults">
+          <div class="grid-wrap empty">Choose a tune to check. Drop .terx files on the boxes on the left, or use Choose file.</div>
+        </div>
+      </div>
+    </section>
+
     <!-- VE CORRECTION -->
     <section id="tab-ve" class="tab" data-active>
       <div class="cols">

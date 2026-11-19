@@ -6,6 +6,7 @@ The app does not connect to the ECU. Holley EFI software still reads and writes 
 
 ## Features
 
+- **Tune check:** reads Terminator X tune files (.terx) and checks them before you load one into a car. It verifies the file checksum and compares a tune against one you know runs. It flags a changed ignition/crank trigger type, MAP sensor scale or injector selection, missing sections, and fuel and spark tables that look like they came from a different car.
 - **VE correction:** compares measured AFR to target AFR in a datalog, including closed loop comp and learn, and builds a corrected VE table. It filters out cold, transient and decel data, lines up wideband lag, and limits how much each cell can change.
 - **Base map:** starting VE, ignition timing and target AFR tables from displacement, cam, heads, compression, fuel and boost.
 - **Knock and timing:** shows where knock retard happened by RPM and MAP, lists each event, and suggests a timing table with timing pulled in those cells.
@@ -30,6 +31,8 @@ npm test
 ## Layout
 
 - `js/core.js`: log parsing, table handling, VE correction and knock math (no DOM, tested in Node)
+- `js/terx.js`: Terminator X .terx tune file reader and comparison (format worked out from real files, see notes in the file)
+- `js/tunecheck-ui.js`: Tune check tab
 - `js/basemap.js`: base map builder
 - `js/sample.js`: made-up sample log
 - `js/app.js`: user interface

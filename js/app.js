@@ -4,6 +4,7 @@ import {
 } from './core.js';
 import { buildBaseMap, BUILD_DEFAULTS, DEFAULT_RPM_AXIS, DEFAULT_MAP_AXIS } from './basemap.js';
 import { sampleData } from './sample.js';
+import { initTuneCheck, isTuneFile, loadTuneToCheck } from './tunecheck-ui.js';
 
 const $ = (id) => document.getElementById(id);
 const state = { log: null, logName: '', roles: {}, ve: null, veResult: null, veView: 'new', base: null, knock: null, charts: [] };
@@ -585,9 +586,14 @@ function init() {
   document.addEventListener('drop', async (e) => {
     e.preventDefault();
     const f = e.dataTransfer.files[0];
-    if (f) loadLog(await f.text(), f.name);
+    if (!f) return;
+    if (isTuneFile(f)) {
+      showTab('tune');
+      loadTuneToCheck(f);
+    } else loadLog(await f.text(), f.name);
   });
 
+  initTuneCheck();
   $('veRun').addEventListener('click', runVE);
   $('veView').querySelectorAll('button').forEach((b) =>
     b.addEventListener('click', () => {
