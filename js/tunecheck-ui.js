@@ -55,7 +55,7 @@ function render() {
   }
   if (!good) {
     const ws = checkTune(check);
-    const rows = FIELDS.map((f) => `<tr><th>${f.label}</th><td>${esc(fieldText(f.key, check.fields[f.key]))}</td><td class="note">${esc(f.note)}</td></tr>`).join('');
+    const rows = FIELDS.map((f) => `<tr><th>${f.label}</th><td>${esc(fieldText(f.key, check.fields[f.key], check.fields))}</td><td class="note">${esc(f.note)}</td></tr>`).join('');
     host.innerHTML = `${verdict(ws, false)}${warningList(ws)}
       <h3>Key settings</h3><div class="tbl-wrap"><table class="kv"><tbody>${rows}</tbody></table></div>
       <h3>Sections</h3><p class="muted" style="font-size:13px">${check.sections.map((s) => SECTION_LABELS[s.kind] || s.kind).join(', ')}</p>

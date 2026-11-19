@@ -79,12 +79,20 @@ test('compare catches the no-start pattern from the wagon', () => {
   const r = compareTunes(good, bad);
   const titles = r.warnings.map((w) => `${w.level}: ${w.title}`).join('\n');
   assert.match(titles, /bad: MAP sensor set to 2-bar, known good tune uses 1-bar/);
-  assert.match(titles, /bad: Injector selection changed \(71 to 255\)/);
+  assert.match(titles, /bad: Injector changed: GM 12576341 \(stock LS3\/LS7\) \(71\) to Custom/);
   assert.match(titles, /bad: Ignition type changed: LS 24X \(5\) to Unknown type \(9\)/);
   assert.match(titles, /info: Leftover text from an older file name/);
   assert.match(r.warnings.find((w) => /Mostly different/.test(w.title)).detail, /.25/);
   assert.match(titles, /warn: I\/O section missing/);
   assert.equal(r.warnings[0].level, 'bad');
+});
+
+test('injector IDs decode to names', async () => {
+  const { injectorText } = await import('../js/terx.js');
+  assert.equal(injectorText(32), '30LB Holley 522-308 (32)');
+  assert.equal(injectorText(110), 'Ford BR3Z9F593A (Coyote) (110)');
+  assert.equal(injectorText(2, 24), 'GM LT4 12703612 (2)');
+  assert.equal(injectorText(9999), 'Unknown injector (9999)');
 });
 
 test('identical tunes compare clean', () => {

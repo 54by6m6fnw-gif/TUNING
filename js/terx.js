@@ -31,7 +31,7 @@ const EXT_KIND = { fuel: 'fuel', spark: 'spark', idle: 'idle', io: 'io', nitrous
 // Known fields: [section, byte offset in section data, type, label, note]
 export const FIELDS = [
   { key: 'mapScale', section: 'sensor', off: 72, kind: 'f32x15', label: 'MAP sensor scale (kPa)', note: '105 kPa top = 1-bar sensor, 210 = 2-bar, 315 = 3-bar' },
-  { key: 'injectorId', section: 'system', off: 172, kind: 'u32', label: 'Injector selection (ID)', note: '255 looks like a custom injector entry' },
+  { key: 'injectorId', section: 'system', off: 172, kind: 'u32', label: 'Injector selection', note: 'From the injector list in Holley EFI software' },
   { key: 'ignitionType', section: 'system', off: 2640, kind: 'u32', label: 'Ignition / crank trigger type', note: 'Matched against Holley base calibrations: LS 24X = 5, LS 58X = 4' },
   { key: 'sys2668', section: 'system', off: 2668, kind: 'u32', label: 'System setting at 2668', note: 'Meaning unknown' },
   { key: 'idleTarget', section: 'idle', off: 84, kind: 'f32x10', label: 'Idle target RPM (cold to warm)', note: '' },
@@ -173,6 +173,86 @@ export function ignitionText(code) {
   return IGNITION_TYPES[code] ? `${IGNITION_TYPES[code]} (${code})` : `Unknown type (${code})`;
 }
 
+// Port injector IDs, decoded from the list inside Holley's Terminator X V3
+// software (ID minus 30 indexes its injector table). Checked against
+// Holley's base tunes: NA LS = 32, HEMI = 112 to 114, Coyote = 110.
+export const PORT_INJECTORS = {
+  30: '19LB Holley 522-198',
+  31: '24LB Holley 522-248',
+  32: '30LB Holley 522-308',
+  33: '36LB Holley 522-368',
+  34: '42LB Holley 522-428',
+  35: '48LB Holley 522-488',
+  50: '60LB Siemens Deka IV',
+  71: 'GM 12576341 (stock LS3/LS7)',
+  72: 'GM 12580426 (5.3 flex fuel)',
+  80: 'FIC 525H',
+  81: 'FIC 650H',
+  82: 'FIC 775H',
+  83: 'FIC 850H',
+  84: 'FIC 1000H',
+  85: 'FIC 1200H',
+  86: 'FIC 1650H',
+  87: 'FIC 2150H',
+  88: 'Term-X 42 lb/hr (522-428X)',
+  89: 'Term-X 76 lb/hr (522-768X)',
+  90: 'Term-X 100 lb/hr (522-108X)',
+  91: 'Term-X 120 lb/hr (522-128X)',
+  92: 'GM 12580681',
+  93: 'GM 17113698',
+  94: 'GM 25317628',
+  95: 'GM 17113553',
+  96: 'GM 25323974',
+  97: 'GM 25320288',
+  98: 'GM 89017586',
+  99: 'GM 12594512',
+  100: 'GM 12609749',
+  101: 'GM 12613411',
+  102: 'GM 12587269',
+  103: 'GM 12613412',
+  104: 'SEP 850cc',
+  105: 'SEP 1000cc',
+  106: 'SEP 1500cc',
+  107: 'Ford Large Body Yellow 19 lb/hr',
+  108: 'Ford Large Body Blue 24 lb/hr',
+  109: 'Ford Large Body Red 30 lb/hr',
+  110: 'Ford BR3Z9F593A (Coyote)',
+  111: 'Mopar RL032713AB',
+  112: 'Mopar 4591851AB',
+  113: 'Mopar 5037479AA',
+  114: 'Mopar 5038337AB',
+  115: 'Mopar 68170238AB',
+  116: 'Mopar 5038838AA',
+  117: 'Accel 150830 30 lb/hr',
+  118: 'Accel 150832 32 lb/hr',
+  119: 'Accel 150844 44 lb/hr',
+  120: 'Accel 151845 45 lb/hr',
+  121: 'Accel 151848 48 lb/hr',
+  122: 'Accel 151853 53 lb/hr',
+  123: 'Accel 151861 61 lb/hr',
+  124: 'Accel 74620L 62 lb/hr',
+  125: 'Accel 151880 80 lb/hr',
+  126: 'FRPP M-9593-LU47',
+  127: 'FRPP M-9593-G302',
+  128: 'FRPP M-9593-MU52',
+  129: 'FRPP M-9593-LU60',
+  130: 'FRPP M-9593-LU80',
+  131: '80LB Siemens Deka IV',
+  132: 'Bosch 210 lb/hr',
+  133: 'Term-X 220 lb/hr (522-228X)',
+  134: 'Ford 7.3 Godzilla (60 psi)',
+  255: 'Custom (entered by hand)',
+};
+
+// Gen V LT direct injection uses its own short list.
+export const DI_INJECTORS = { 0: 'GM L83 12698484', 1: 'GM L86/LT1 12692521', 2: 'GM LT4 12703612', 3: 'GM L82/L84/L87', 4: 'GM LT2/L8T', 5: 'GM LT5' };
+
+export function injectorText(id, ignitionType) {
+  if (id == null) return 'n/a';
+  const list = ignitionType === 24 ? DI_INJECTORS : PORT_INJECTORS;
+  return list[id] ? `${list[id]} (${id})` : `Unknown injector (${id})`;
+}
+
 // CRC-32 (IEEE). Holley stores the CRC of everything before the last 4 bytes
 // in those last 4 bytes, most significant byte first.
 let CRC_TABLE;
@@ -196,8 +276,9 @@ export function mapBar(scale) {
   return top > 0 ? Math.round(top / 105) : null;
 }
 
-export function fieldText(key, v) {
+export function fieldText(key, v, fields = {}) {
   if (v == null) return 'n/a';
+  if (key === 'injectorId') return injectorText(v, fields.ignitionType);
   if (key === 'mapScale') return `${v[0]} to ${v[v.length - 1]}` + (mapBar(v) ? ` (${mapBar(v)}-bar)` : '');
   if (key === 'ignitionType') return ignitionText(v);
   if (Array.isArray(v)) return `${Math.round(v[0])} to ${Math.round(v[v.length - 1])}`;
@@ -236,7 +317,7 @@ export function compareTunes(good, check) {
   const rows = FIELDS.map((f) => {
     const a = good.fields[f.key];
     const b = check.fields[f.key];
-    return { key: f.key, label: f.label, note: f.note, good: fieldText(f.key, a), check: fieldText(f.key, b), same: sameValue(a, b) };
+    return { key: f.key, label: f.label, note: f.note, good: fieldText(f.key, a, good.fields), check: fieldText(f.key, b, check.fields), same: sameValue(a, b) };
   });
 
   const gi = good.fields.ignitionType;
@@ -254,10 +335,10 @@ export function compareTunes(good, check) {
       detail: 'If the sensor on the car does not match this setting, the ECU reads the wrong manifold pressure and fuels for the wrong load. A 2-bar setting on a 1-bar sensor floods the engine and can stop it from starting.',
     });
   }
+
   if (good.fields.injectorId != null && check.fields.injectorId != null && good.fields.injectorId !== check.fields.injectorId) {
-    warnings.push({ level: 'bad', title: `Injector selection changed (${good.fields.injectorId} to ${check.fields.injectorId})`, detail: 'Wrong injector data throws off every fuel calculation. Confirm the injector data matches the injectors in the car.' });
-  }
-  const kinds = [...new Set([...good.sections.map((s) => s.kind), ...check.sections.map((s) => s.kind)])];
+    warnings.push({ level: 'bad', title: `Injector changed: ${injectorText(good.fields.injectorId, gi)} to ${injectorText(check.fields.injectorId, ci)}`, detail: 'The ECU sizes every injector pulse from this setting. If it does not match the injectors in the car, the engine runs far too rich or far too lean and may not start. Confirm which injectors are installed.' });
+  }  const kinds = [...new Set([...good.sections.map((s) => s.kind), ...check.sections.map((s) => s.kind)])];
   const sections = kinds.map((k) => {
     const d = sectionDiff(good.byKind[k] && good.byKind[k].data, check.byKind[k] && check.byKind[k].data);
     return { kind: k, label: SECTION_LABELS[k] || k, inGood: !!good.byKind[k], inCheck: !!check.byKind[k], pct: d ? d.pct : null, diff: d ? d.diff : null, total: d ? d.total : null };
